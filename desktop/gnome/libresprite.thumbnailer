@@ -1,0 +1,4 @@
+[Thumbnailer Entry]
+TryExec=libresprite-thumbnailer
+Exec=libresprite-thumbnailer %i %o %s
+MimeType=image/x-aseprite;

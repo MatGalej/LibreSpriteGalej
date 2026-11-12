@@ -12,6 +12,15 @@
     <entry maxsize="10" id="frlen" magnet="true" />
     <box cell_align="horizontal" />
 
+    <label text="Frames per second:" />
+    <entry maxsize="24" id="fps" />
+    <box cell_align="horizontal" />
+
+    <label text="FPS is rounded to whole milliseconds." cell_hspan="3" />
+    <label text="" id="feedback" minwidth="280" cell_hspan="3" />
+    <label text="Mixed durations: showing the first frame." id="mixed" cell_hspan="3" />
+    <label text="OK applies this duration to all selected frames." id="scope" cell_hspan="3" />
+
     <separator horizontal="true" cell_hspan="3" />
 
     <box horizontal="true" homogeneous="true" cell_hspan="3" cell_align="right">

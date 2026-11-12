@@ -14,6 +14,7 @@
 #include "app/commands/params.h"
 #include "app/context_access.h"
 #include "app/document_api.h"
+#include "app/modules/i18n.h"
 #include "app/ui/timeline.h"
 #include "app/transaction.h"
 #include "base/convert_to.h"
@@ -22,9 +23,79 @@
 
 #include "frame_properties.xml.h"
 
+#include <cerrno>
+#include <cctype>
+#include <cmath>
+#include <cstdlib>
+
 namespace app {
 
 using namespace ui;
+
+class FramePropertiesWindow : public app::gen::FrameProperties {
+public:
+  FramePropertiesWindow(int duration, bool multipleFrames, bool mixedDurations, bool allFrames) {
+    frlen()->setTextf("%d", duration);
+    fps()->setTextf("%.9f", 1000.0 / duration);
+    mixed()->setVisible(mixedDurations);
+    scope()->setVisible(multipleFrames);
+    if (allFrames)
+      scope()->setI18N("OK applies this duration to every frame.");
+    updateFeedback(duration);
+
+    frlen()->Change.connect(&FramePropertiesWindow::onDurationChange, this);
+    fps()->Change.connect(&FramePropertiesWindow::onFpsChange, this);
+  }
+
+private:
+  static bool atEnd(const char* end) {
+    while (std::isspace(static_cast<unsigned char>(*end)))
+      ++end;
+    return *end == '\0';
+  }
+
+  void invalid(const char* message) {
+    ok()->setEnabled(false);
+    feedback()->setText(i18n(message));
+  }
+
+  void updateFeedback(int duration) {
+    ok()->setEnabled(true);
+    feedback()->setTextf(i18n("Stored: %d ms/frame (%.3f FPS)").c_str(),
+                         duration, 1000.0 / duration);
+  }
+
+  void onDurationChange() {
+    const std::string& value = frlen()->text();
+    char* end;
+    errno = 0;
+    long duration = std::strtol(value.c_str(), &end, 10);
+    if (end == value.c_str() || !atEnd(end) || errno == ERANGE ||
+        duration < 1 || duration > 65535) {
+      invalid("Enter whole milliseconds from 1 to 65535.");
+      return;
+    }
+
+    fps()->setTextf("%.9f", 1000.0 / duration);
+    updateFeedback(static_cast<int>(duration));
+  }
+
+  void onFpsChange() {
+    const std::string& value = fps()->text();
+    char* end;
+    errno = 0;
+    double rate = std::strtod(value.c_str(), &end);
+    if (end == value.c_str() || !atEnd(end) || errno == ERANGE ||
+        !std::isfinite(rate) || rate < 1000.0 / 65535 || rate > 1000.0) {
+      invalid("Enter FPS from 0.015259022 to 1000.");
+      return;
+    }
+
+    int duration = static_cast<int>(std::round(1000.0 / rate));
+    frlen()->setTextf("%d", duration);
+    updateFeedback(duration);
+  }
+};
 
 class FramePropertiesCommand : public Command {
 public:
@@ -81,7 +152,6 @@ void FramePropertiesCommand::onExecute(Context* context)
   const ContextReader reader(context);
   const Sprite* sprite = reader.sprite();
 
-  app::gen::FrameProperties window;
   frame_t firstFrame = 0;
   frame_t lastFrame = 0;
 
@@ -109,12 +179,22 @@ void FramePropertiesCommand::onExecute(Context* context)
       break;
   }
 
+  int duration = sprite->frameDuration(firstFrame);
+  bool mixedDurations = false;
+  for (frame_t frame = firstFrame + 1; frame <= lastFrame; ++frame) {
+    if (sprite->frameDuration(frame) != duration) {
+      mixedDurations = true;
+      break;
+    }
+  }
+
+  FramePropertiesWindow window(duration, firstFrame != lastFrame,
+                               mixedDurations, m_target == ALL_FRAMES);
+
   if (firstFrame != lastFrame)
     window.frame()->setTextf("[%d...%d]", (int)firstFrame+1, (int)lastFrame+1);
   else
     window.frame()->setTextf("%d", (int)firstFrame+1);
-
-  window.frlen()->setTextf("%d", sprite->frameDuration(firstFrame));
 
   window.openWindowInForeground();
   if (window.closer() == window.ok()) {
